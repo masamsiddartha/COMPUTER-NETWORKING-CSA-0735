@@ -1,0 +1,75 @@
+import java.io.*;
+import java.net.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class ChatServer {
+    private static final int PORT = 12345;
+    private static List<ClientHandler> clients = new ArrayList<>();
+
+    public static void main(String[] args) {
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            System.out.println("Chat Server started. Waiting for clients to connect...");
+
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
+
+                ClientHandler clientHandler = new ClientHandler(clientSocket);
+                clients.add(clientHandler);
+                new Thread(clientHandler).start();
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static synchronized void broadcastMessage(String message, ClientHandler excludeUser) {
+        for (ClientHandler client : clients) {
+            if (client != excludeUser) {
+                client.sendMessage(message);
+            }
+        }
+    }
+
+    static class ClientHandler implements Runnable {
+        private Socket clientSocket;
+        private PrintWriter out;
+        private BufferedReader in;
+
+        public ClientHandler(Socket socket) {
+            this.clientSocket = socket;
+        }
+
+        @Override
+        public void run() {
+            try {
+                out = new PrintWriter(clientSocket.getOutputStream(), true);
+                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+
+                String userName = in.readLine();
+                broadcastMessage(userName + " has joined the chat!", this);
+
+                String message;
+                while ((message = in.readLine()) != null) {
+                    System.out.println(userName + ": " + message);
+                    broadcastMessage(userName + ": " + message, this);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    clientSocket.close();
+                    clients.remove(this);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        public void sendMessage(String message) {
+            out.println(message);
+        }
+    }
+}
